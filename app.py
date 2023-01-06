@@ -47,7 +47,7 @@ def join_year(years):
 
 def reader():
     arr = []
-    with open("data.csv", mode="r") as csv_file:
+    with open("data.csv", mode="r", encoding="latin1") as csv_file:
         csv_reader = csv.DictReader(csv_file)
 
         for row in csv_reader:
