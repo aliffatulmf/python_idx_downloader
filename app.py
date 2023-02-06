@@ -11,38 +11,42 @@ from rich.console import Console
 from multiprocessing import Pool
 
 
-console = Console()
-
-
-# Options
-BROWSER = {
-    "browser": "chrome",
-    "desktop": True,
-    "mobile": False,
-    "platform": "linux",
-}
-DELAYS = 5
-
-# Args
-# fmt:off
-parser = argparse.ArgumentParser(prog="IDX Downloader",
-                                 description="Download file from idx.co.id",
-                                 usage='use "%(prog)s --help" for more information',
-                                 formatter_class=argparse.RawTextHelpFormatter
-                                 )
-parser.add_argument("-y", "--year", action="extend", type=list, nargs="+", required=True, dest="year", help="year to search (required)\nexample: -y 2019 -y 2020, -y 2021")
-parser.add_argument("-x", "--parallel", type=int, default=os.cpu_count(), dest="parallel", help="parallel task\n(default: based on the number of cores owned)")
-# fmt:on
+parser = argparse.ArgumentParser(
+    prog="IDX Downloader",
+    description="Download file from idx.co.id",
+    usage='use "%(prog)s --help" for more information',
+    formatter_class=argparse.RawTextHelpFormatter,
+)
+parser.add_argument(
+    "-y",
+    "--year",
+    action="extend",
+    type=int,
+    nargs="+",
+    required=True,
+    dest="year",
+    help="year to search (required)\nexample: -y 2019 -y 2020, -y 2021",
+)
+parser.add_argument(
+    "-x",
+    "--parallel",
+    type=int,
+    default=os.cpu_count(),
+    dest="parallel",
+    help="parallel task\n(default: based on the number of cores owned)",
+)
 args = parser.parse_args()
 
-
-def join_year(years):
-    year_list = []
-    for year in years:
-        ys = "".join(year)
-        year_list.append(ys)
-
-    return year_list
+console = Console()
+csinit = cloudscraper.create_scraper(
+    browser={
+        "browser": "chrome",
+        "desktop": True,
+        "mobile": False,
+        "platform": "linux",
+    },
+    delay=5,
+)
 
 
 def reader():
@@ -56,8 +60,13 @@ def reader():
     return arr
 
 
-def json_info(year, kode_emiten, number, name):
-    url = "https://idx.co.id/primary/ListedCompany/GetFinancialReport"
+HEADERS = {"Connection": "Keep-Alive", "Keep-Alive": "timeout=5;max=1000"}
+YEARS = args.year
+ROWS = reader()
+
+
+def json_info(year, kode_emiten):
+    url = "https://www.idx.co.id/primary/ListedCompany/GetFinancialReport"
     params = {
         "indexFrom": 1,
         "pageSize": 12,
@@ -70,30 +79,21 @@ def json_info(year, kode_emiten, number, name):
         "SortOrder": "asc",
     }
 
-    init = cloudscraper.create_scraper(browser=BROWSER, delay=DELAYS)
-    r = init.get(url, params=params).text
-
-    return json.loads(r)
-
-
-YEARS = join_year(args.year)
-ROWS = reader()
-TOTAL_ROWS = len(ROWS)
-CURRENT_ROW = 3
-
-RANDOM_SLEEP_DOWNLOAD = [2, 4]
-RANDOM_SLEEP_LOOP = [1, 5]
-
-console.clear()
+    text = csinit.get(
+        url,
+        params=params,
+        headers=HEADERS,
+    )
+    return json.loads(text)
 
 
 def main(row):
     for year in YEARS:
-        data = json_info(year, row["kode"], row["no"], row["nama"])
+        data = json_info(year, row["kode"])
         result = data["Results"]
 
-        console.log(
-            f'[DW] [yellow]{data["Search"]["KodeEmiten"]} [white]{row["nama"]} => [cyan][{year}]'
+        console.print(
+            f'[DW] [cyan][{year}] [yellow]{data["Search"]["KodeEmiten"]} [white]{row["nama"]}'
         )
 
         if len(result) < 1:
@@ -112,10 +112,7 @@ def main(row):
 
             fpath = i["File_Path"]
             link = "https://idx.co.id" + quote(fpath)
-
-            dw = cloudscraper.create_scraper(browser=BROWSER, delay=DELAYS)
-
-            content = dw.get(link).content
+            content = csinit.get(link, headers=HEADERS).content
 
             fileopen = open(f'{fdir}/{i["File_Name"]}', "wb")
             fileopen.write(content)
